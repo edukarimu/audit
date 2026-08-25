@@ -79,11 +79,13 @@ now, and how to close it later.
 
 Added 2026-08-25. Right after picking a language, a volunteer now picks
 their name from a fixed list (`VOLUNTEERS` in `lib/waterAssets.js`: Thuler,
-Arake, Gui Lacerda, Rafa Braga, Sergio, Padilha) — remembered on that device
-from then on, same as language, and changeable later from the same screen
-(globe icon → scroll down). It only decides which Water Points show up on
-"My route" from the home screen; it isn't sent anywhere and doesn't gate
-which audits someone can start.
+Arake, Gui Lacerda, Rafa Braga, Sergio, Padilha, plus a `Teste` account for
+QA with nothing assigned to it) — remembered on that device from then on,
+same as language, and changeable later from the same screen (globe icon →
+scroll down). It decides which Water Points show up on "My route", and
+(added 2026-08-26) is used to auto-fill the Inspector field on every new
+audit's Setup screen — nobody has to type their own name a second time.
+It isn't sent anywhere else and doesn't gate which audits someone can start.
 
 "My route" shows that volunteer's assigned Water Points on a map (OpenStreetMap
 tiles via Leaflet — needs a connection to load the map itself, though the
@@ -128,44 +130,87 @@ columns) to rebuild `WATER_ASSET_ROWS` in `lib/waterAssets.js` with fresh
 script committed here yet — it was run ad hoc; worth turning into a real
 `scripts/` file if this becomes a recurring task.
 
-## Google Drive / Sheets sync setup
+## Sync storage, admin page, and reporting
 
-`app/api/sync/route.js` is the only thing standing between "audits queue on
-the phone" and "photos land in Drive + a spreadsheet gets a row per finding."
-It's written and ready, but **has not been exercised against real Google
-APIs yet** — there was no service account available to test with while this
-was built. Treat the first real sync as a test, not as production-ready.
+Changed 2026-08-26. The original design synced straight into Google
+Sheets/Drive using a Google Cloud service account — that needs real IT
+setup (a GCP project, enabled APIs, a service account, a JSON key, sharing
+files with it) that isn't happening for this project. `app/api/sync/route.js`
+now saves each completed audit to **Vercel Blob** instead (`lib/blobStore.js`)
+— no Google Cloud step at all, just one toggle in Vercel.
 
-To activate it, set these environment variables in the Vercel project
-(Project Settings → Environment Variables):
+**To activate it:** in the Vercel project, Storage tab → create a Blob
+store → connect it to this project. That's the whole setup — Vercel
+injects `BLOB_READ_WRITE_TOKEN` automatically, and `/api/sync` picks it up
+on the next deploy. Until it's connected, `/api/sync` returns a clear
+"not configured" response and every audit just stays queued on the
+device — nothing is lost, it just can't leave the phone yet. The client's
+manual "Export JSON" backup button still works regardless, as a fallback.
 
-| Variable | What it is |
-|---|---|
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | The service account's `...@...iam.gserviceaccount.com` address. |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | The service account's private key (the `private_key` field from its JSON key file, including the `-----BEGIN PRIVATE KEY-----` lines). |
-| `KARIMU_DRIVE_FOLDER_ID` | The Drive folder ID where photos should be uploaded. The folder must be shared with the service account's email (Editor access), or owned by it. |
-| `KARIMU_SHEET_ID` | The spreadsheet ID (from its URL) where results should be written. Also needs to be shared with the service account. The app creates `Audits` and `Findings` tabs in it automatically if they don't already exist. |
+Each synced audit becomes one JSON blob (`audits/{auditId}.json`) plus one
+blob per photo (`photos/{auditId}/{filename}.jpg`, publicly viewable at its
+own URL — no signing needed). Re-syncing the same audit overwrites its
+blob rather than duplicating it.
 
-Both tabs now carry `Ward` / `Village` / `Sub-Village` / `Asset Tag` columns
-(and `Audits` has `Asset Type` too) alongside the original `School` / `Unit`
-columns — empty for water point audits, and vice versa for any legacy
-school/bathroom audit that still gets synced. See `SHEET_TABS` in
-`lib/googleWorkspace.js` for the exact column order.
+### Admin page
 
-Until all four are set, `/api/sync` returns a clear "not configured" response
-and the app keeps every audit queued locally — nothing is lost, it just can't
-leave the device automatically yet. The client already has a manual "Export
-JSON" backup button for that gap.
+`/admin` on the deployed site — a shared-keyword gate (not per-person
+accounts), default keyword `K@rimu` (`ADMIN_PASSWORD` in `lib/adminAuth.js`;
+**set a real value in Vercel's environment variables before this is used
+for anything that matters** — the fallback is sitting in this repo's
+source). Behind it: a table of every synced audit and every occurrence
+(issue) with a link to its photo(s), read live from Blob storage — nothing
+is copied or cached, so it's always current as of the last sync.
 
-**Required Google Cloud API access:** the service account's project needs the
-Drive API and Sheets API enabled, and the service account needs `drive.file`
-and `spreadsheets` scopes (already what the code requests).
+There's deliberately no "generate report" button on the page itself — see
+below for why.
 
-**Before trusting this with real field data:** run one audit through with a
-real photo, confirm the photo actually appears in the Drive folder and a row
-appears in both the `Audits` and `Findings` tabs of the sheet. If anything
-about the request/response shape is off, `lib/googleWorkspace.js` is a single
-small file — easy to fix in one place.
+### Getting the data into an actual Google Sheet + Drive photos
+
+Edu's Google Drive is connected to Claude directly (no service account
+needed for this part), but that connector only has generic file
+operations (create/read/search) — no Google Sheets cell-editing API. So
+updating one persistent spreadsheet's *cells* from server code, or from
+Claude's Drive tools, isn't possible; only creating brand-new files is.
+The workaround that needs no API access at all: Google Sheets'
+`IMPORTDATA()` formula, which fetches a URL's CSV content itself and
+refreshes it automatically every couple of hours (and on open) — no app
+code, no scheduled task, nothing to maintain.
+
+One-time setup, done once by a human in the actual spreadsheet (the admin
+page shows the exact text once you've logged in, with your own keyword
+already filled in):
+
+1. Open the target spreadsheet — as of 2026-08-26, [Water Points Audit
+   Results](https://docs.google.com/spreadsheets/d/1PMCZa1GW77uCNAnuo51KTBUti9RH-_B1vFxEOVBj-Ag/edit).
+2. Rename its first tab to `Findings`; add a second tab named `Audits`.
+3. In `Findings!A1`: `=IMPORTDATA("https://<deployment-url>/api/admin/export?tab=findings&format=csv&key=<ADMIN_PASSWORD>")`
+4. In `Audits!A1`: the same URL with `tab=audits`.
+
+`key=` on that URL is the same shared keyword as the admin page — it's
+there because `IMPORTDATA` can't send a cookie or an `Authorization`
+header, only fetch a plain URL, so the keyword has to travel in the query
+string for this one legitimate use.
+
+**Photos still need a real copy in Drive** — `IMPORTDATA` only pulls text,
+so an occurrence's photo(s) stay Blob-storage URLs in the sheet (also
+directly viewable, just not "in Karimu's Drive" the way Edu wants for the
+Shared Drive backup) until something actually uploads them. That
+something is a daily scheduled Claude routine (set up 2026-08-26, `19:00`
+Tanzania time / `16:00` UTC): it reads the Findings export, and for every
+occurrence's photo not already sitting in the
+["Water Points Maintenance"](https://drive.google.com/drive/folders/1aXy3R_WFnQy2jNtxuAh97H-96zC7oYcH)
+Drive folder (checked by filename — same filename scheme as the Blob
+storage path, so a row's `photoFilenames` column and the file sitting in
+Drive always match by name, with nothing else needed to correlate them),
+downloads it from its Blob URL and re-uploads it there. Idempotent by
+design — running it twice in a row just finds everything already present
+and uploads nothing.
+
+Ask Claude directly in a chat any time for an on-demand run of that same
+photo-upload step, or to re-generate/inspect the report by another means —
+this section describes the mechanism, not a fixed procedure Claude has to
+follow verbatim if a better one is obviously available later.
 
 ## Language / i18n
 

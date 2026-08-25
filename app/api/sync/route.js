@@ -1,4 +1,4 @@
-import { isConfigured, syncAuditToWorkspace } from "@/lib/googleWorkspace";
+import { isConfigured, saveAudit } from "@/lib/blobStore";
 
 export const runtime = "nodejs";
 // Photos are embedded as base64 in the JSON body, so a few of them adds
@@ -14,10 +14,9 @@ export async function POST(request) {
         ok: false,
         code: "not_configured",
         message:
-          "The server isn't connected to Google Drive/Sheets yet — missing " +
-          "GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_SERVICE_ACCOUNT_KEY, " +
-          "KARIMU_DRIVE_FOLDER_ID or KARIMU_SHEET_ID. Ask whoever manages " +
-          "this deployment to add them in the Vercel project settings.",
+          "This deployment isn't connected to storage yet — missing " +
+          "BLOB_READ_WRITE_TOKEN. Ask whoever manages this deployment to " +
+          "add a Blob store in the Vercel project's Storage tab.",
       },
       { status: 503 }
     );
@@ -36,12 +35,12 @@ export async function POST(request) {
   }
 
   try {
-    const result = await syncAuditToWorkspace(audit);
+    const result = await saveAudit(audit);
     return Response.json({ ok: true, ...result });
   } catch (err) {
     console.error("sync failed for audit", audit.id, err);
     return Response.json(
-      { ok: false, code: "upstream_error", message: err.message || "Could not reach Google Drive/Sheets." },
+      { ok: false, code: "upstream_error", message: err.message || "Could not save this audit." },
       { status: 502 }
     );
   }
