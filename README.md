@@ -123,14 +123,15 @@ Adding a fourth language means adding one more entry to `LANGUAGES` and
 one more language block to `TEXT`/`UI_STRINGS` in `lib/i18n.js` — nothing
 in `lib/checklists.js` or the backend needs to change.
 
-**Known gap:** the water point/tank checklist's section and group names
-(e.g. "Water Point", "Valve Chamber", "Source Pipes") are translated into
-es/pt in `TEXT`, but the 81 individual statements under them (e.g. "is
-structurally in good condition") are not — they render in English for
-every language, via `tr()`'s built-in fallback. Translating them accurately
-needs a fluent review, not a guess; add `es`/`pt` entries for each English
-statement string in `lib/checklists.js`'s `WATER_POINT_SECTIONS` /
-`WATER_TANK_SECTIONS` to close this gap.
+The water point checklist's section/group names and all 58 unique
+statement strings (`WATER_POINT_SECTIONS` and — dormant for now, see
+above — `WATER_TANK_SECTIONS` in `lib/checklists.js`) are translated into
+es/pt in `TEXT`. (An earlier version of this app shipped with only the
+section/group names translated; a field test in pt surfaced English
+statement text throughout the checklist, which is what prompted adding
+the rest.) If new statements are ever added to those sections, add
+matching `es`/`pt` entries in `TEXT` in the same pass — `tr()`'s English
+fallback means a missed one won't error, it'll just quietly show English.
 
 ## What's ported from the prototype, what's new
 
