@@ -31,7 +31,7 @@ const AUDIT_COLUMNS = [
 const FINDING_COLUMNS = [
   "syncedAt", "auditId", "school", "unit",
   "ward", "village", "subVillage", "assetTag",
-  "section", "group", "statement", "note", "photoFilenames",
+  "section", "group", "statement", "note", "photoFilenames","photoUrls",
 ];
 
 export async function GET(request) {
