@@ -1,10 +1,17 @@
 # Karimu Field Audit
 
-Offline-first maintenance audit app for Karimu Foundation volunteers. Pick an audit
-type (School building / School bathroom for now), work the checklist without any
-connection, then Sync when back online. Ported from an interactive prototype —
-see `lib/checklists.js` for the full item lists and applicability rules, and
-`lib/engine.js` for the app itself (screens, offline storage, sync).
+Offline-first maintenance audit app for Karimu Foundation volunteers. Approved
+by Nelson to go live for **water point audits**: pick a Ward, Village,
+optional Sub-Village, and Asset Tag from the Water Assets registry, work the
+maintenance checklist without any connection, then Sync when back online.
+School building / school bathroom / health post audits are built and still
+in the code (`available:false` in `lib/checklists.js`), but are not in active
+use right now — flip that flag back on if/when they're needed again.
+
+Ported from an interactive prototype — see `lib/checklists.js` for the full
+item lists and applicability rules, `lib/waterAssets.js` for the embedded
+Water Assets registry powering the picker, and `lib/engine.js` for the app
+itself (screens, offline storage, sync).
 
 ## Run locally
 
@@ -20,6 +27,40 @@ Open http://localhost:3000.
 This is a stock Next.js App Router project — deploy it to Vercel by connecting
 this repository (Import Project → this repo) or with `vercel deploy` from a
 machine that can reach vercel.com. No special build settings needed.
+
+## Water Assets registry
+
+`lib/waterAssets.js` embeds the full "Water Assets" tab of the [Water Assets
+sheet](https://docs.google.com/spreadsheets/d/1HLnqnP8wUJjV-MfVO9o7cio693qG220MpOHbFLRLrFE)
+— 1,717 assets across the Ayalagaya, Arri, and Kiru wards, as of the
+2026-08-25 export — so the Ward → Village → Sub-Village → Asset Tag picker
+works fully offline, same as everything else in this app.
+
+Of those, 1,693 are Water Points and 24 are Water Tanks. **Only Water Points
+are in the picker right now** — Nelson's scope decision, confirmed
+2026-08-25 — via a filter on `WATER_ASSETS` in `lib/waterAssets.js`; the
+raw 1,717-row list stays in the file either way. If tanks come into scope
+later, dropping that one filter brings them back, and the 51-item "Tanks
+and Intake" checklist in `lib/checklists.js` (`WATER_TANK_SECTIONS`) is
+already written and wired up to `assetType === "T"` — it's just unreachable
+while every asset in the picker is a Water Point.
+
+The Water Point checklist itself (`WATER_POINT_SECTIONS` in
+`lib/checklists.js`) is sourced from the "Maintanence checklist-Water
+Project" tab of a separate sheet, and picked automatically based on the
+selected asset's type.
+
+**This data goes stale as the registry sheet changes** — new water points,
+renamed villages, corrected wards. There's no live sync back to the sheet;
+re-export it and regenerate `lib/waterAssets.js` (a plain array of
+`[assetTag, assetType, ward, village, subVillage, location]` tuples) when
+it's meaningfully out of date. Two Kiru assets have no village/sub-village
+on file and use `""` — that's the sheet's data, not a bug here.
+
+The 81 individual checklist statements (in both the Water Point and Tanks
+and Intake sections) are kept verbatim from Nelson's checklist and are only
+in English — see the i18n note below on why that's an acceptable gap for
+now, and how to close it later.
 
 ## Google Drive / Sheets sync setup
 
@@ -38,6 +79,12 @@ To activate it, set these environment variables in the Vercel project
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | The service account's private key (the `private_key` field from its JSON key file, including the `-----BEGIN PRIVATE KEY-----` lines). |
 | `KARIMU_DRIVE_FOLDER_ID` | The Drive folder ID where photos should be uploaded. The folder must be shared with the service account's email (Editor access), or owned by it. |
 | `KARIMU_SHEET_ID` | The spreadsheet ID (from its URL) where results should be written. Also needs to be shared with the service account. The app creates `Audits` and `Findings` tabs in it automatically if they don't already exist. |
+
+Both tabs now carry `Ward` / `Village` / `Sub-Village` / `Asset Tag` columns
+(and `Audits` has `Asset Type` too) alongside the original `School` / `Unit`
+columns — empty for water point audits, and vice versa for any legacy
+school/bathroom audit that still gets synced. See `SHEET_TABS` in
+`lib/googleWorkspace.js` for the exact column order.
 
 Until all four are set, `/api/sync` returns a clear "not configured" response
 and the app keeps every audit queued locally — nothing is lost, it just can't
@@ -76,8 +123,22 @@ Adding a fourth language means adding one more entry to `LANGUAGES` and
 one more language block to `TEXT`/`UI_STRINGS` in `lib/i18n.js` — nothing
 in `lib/checklists.js` or the backend needs to change.
 
+**Known gap:** the water point/tank checklist's section and group names
+(e.g. "Water Point", "Valve Chamber", "Source Pipes") are translated into
+es/pt in `TEXT`, but the 81 individual statements under them (e.g. "is
+structurally in good condition") are not — they render in English for
+every language, via `tr()`'s built-in fallback. Translating them accurately
+needs a fluent review, not a guess; add `es`/`pt` entries for each English
+statement string in `lib/checklists.js`'s `WATER_POINT_SECTIONS` /
+`WATER_TANK_SECTIONS` to close this gap.
+
 ## What's ported from the prototype, what's new
 
+- Newest: water point audits (this is the audit type actually in use —
+  see above). Ward/Village/Sub-Village/Asset Tag picker in
+  `lib/waterAssets.js`, checklist content in `lib/checklists.js`
+  (`WATER_POINT_SECTIONS` / `WATER_TANK_SECTIONS`), setup screen and
+  review screen changes in `lib/engine.js`.
 - Same checklists, same applicability rules, same offline-first local
   storage, same "All OK" / "Rest OK" shortcuts, same completed-audit gate.
 - New: this runs as a normal website, not inside a sandboxed preview, so it
