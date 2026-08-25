@@ -53,14 +53,67 @@ selected asset's type.
 **This data goes stale as the registry sheet changes** — new water points,
 renamed villages, corrected wards. There's no live sync back to the sheet;
 re-export it and regenerate `lib/waterAssets.js` (a plain array of
-`[assetTag, assetType, ward, village, subVillage, location]` tuples) when
-it's meaningfully out of date. Two Kiru assets have no village/sub-village
-on file and use `""` — that's the sheet's data, not a bug here.
+`[assetTag, assetType, ward, village, subVillage, location, lat, lon,
+volunteer, routeOrder]` tuples — see "Volunteer identification and routes"
+below for the last four) when it's meaningfully out of date. Two Kiru
+assets have no village/sub-village on file and use `""` — that's the
+sheet's data, not a bug here.
 
 The 81 individual checklist statements (in both the Water Point and Tanks
 and Intake sections) are kept verbatim from Nelson's checklist and are only
 in English — see the i18n note below on why that's an acceptable gap for
 now, and how to close it later.
+
+## Volunteer identification and routes
+
+Added 2026-08-25. Right after picking a language, a volunteer now picks
+their name from a fixed list (`VOLUNTEERS` in `lib/waterAssets.js`: Thuler,
+Arake, Gui Lacerda, Rafa Braga, Sergio, Padilha) — remembered on that device
+from then on, same as language, and changeable later from the same screen
+(globe icon → scroll down). It only decides which Water Points show up on
+"My route" from the home screen; it isn't sent anywhere and doesn't gate
+which audits someone can start.
+
+"My route" shows that volunteer's assigned Water Points on a map (OpenStreetMap
+tiles via Leaflet — needs a connection to load the map itself, though the
+stop list below it works offline like everything else) with a suggested
+visiting order, plus a tap-to-start shortcut into a pre-filled audit for
+that asset. The assignment and order are **precomputed and baked into
+`lib/waterAssets.js`**, not calculated on the device, so every volunteer's
+phone shows the same plan:
+
+- Of the 1,693 Water Points, **1,121 (66%) have GPS coordinates** in the
+  sheet's "Coordinates in decimal" column; the other 572 (34%) don't —
+  mostly villages that just weren't GPS-tagged yet. Only the 1,121 go into
+  the routing math below; re-collecting GPS for the rest and regenerating
+  this file would bring them in too.
+- Those 1,121 were split into 6 **equal-sized** (~187 each), geographically
+  compact groups via a recursive median-cut partition (repeatedly slice the
+  point cloud in half along whichever axis — latitude or longitude —
+  currently spans further), then each group assigned to one volunteer,
+  west to east. This is a straight geographic split, not a request from
+  Nelson about who covers what — if there's an existing human assignment,
+  swap it in instead.
+- Within each volunteer's group, the visiting order is a nearest-neighbor
+  walk starting from the westmost point — **straight-line distance**, since
+  there's no detailed road network here to route against. The map draws
+  that straight-line path; it is not turn-by-turn driving directions.
+- The 572 without coordinates are still assigned to a volunteer (by
+  majority vote of their own village's coordinate-bearing points, falling
+  back to ward, then to the single largest group — only 2 assets, both in
+  Kiru, hit that last fallback), but with no position to place them in the
+  order, so the app lists them after the route, unordered, flagged "No GPS."
+  This means volunteer workloads are **not perfectly even** once those are
+  included — whichever villages have poor GPS coverage weigh down whoever's
+  group they landed in.
+
+To regenerate this after the sheet changes (new points, or GPS added for
+the 572 gap above): re-export "Water Assets", re-run the same clustering
+script (recursive median-cut + nearest-neighbor, seeded from the "Coordinates
+in decimal" column) to rebuild `WATER_ASSET_ROWS` in `lib/waterAssets.js`
+with fresh `lat`/`lon`/`volunteer`/`routeOrder` values. There's no saved
+script committed here yet — it was run ad hoc; worth turning into a real
+`scripts/` file if this becomes a recurring task.
 
 ## Google Drive / Sheets sync setup
 
@@ -140,6 +193,9 @@ fallback means a missed one won't error, it'll just quietly show English.
   `lib/waterAssets.js`, checklist content in `lib/checklists.js`
   (`WATER_POINT_SECTIONS` / `WATER_TANK_SECTIONS`), setup screen and
   review screen changes in `lib/engine.js`.
+- Newer still: volunteer identification and "My route" (map + suggested
+  visiting order + tap-to-start) — see "Volunteer identification and
+  routes" above.
 - Same checklists, same applicability rules, same offline-first local
   storage, same "All OK" / "Rest OK" shortcuts, same completed-audit gate.
 - New: this runs as a normal website, not inside a sandboxed preview, so it

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import "leaflet/dist/leaflet.css";
 
 export default function Page() {
   useEffect(() => {
