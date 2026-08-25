@@ -45,19 +45,30 @@ and Intake" checklist in `lib/checklists.js` (`WATER_TANK_SECTIONS`) is
 already written and wired up to `assetType === "T"` — it's just unreachable
 while every asset in the picker is a Water Point.
 
+Of the 1,693 Water Points, the sheet's "Ownership" column marks 332 as
+**Public** and 1,361 as **Private**. **Only Public Water Points are in the
+picker** — Edu's scope decision, confirmed 2026-08-26: private water points
+aren't part of Karimu's audit program. Same reversible-filter pattern as
+Water Tanks above (an `isPublic` flag on each row, checked alongside the
+Water Point type check in `WATER_ASSETS`) — the 1,361 private rows stay in
+the file, just unreachable from the picker, route, or map anywhere in the
+app. Two of the 332 Public Water Points (in Kiru) have no village on file
+and so don't surface in the Ward → Village → ... picker either — that's
+the sheet's data (see the Kiru note below), not something this filter did.
+
 The Water Point checklist itself (`WATER_POINT_SECTIONS` in
 `lib/checklists.js`) is sourced from the "Maintanence checklist-Water
 Project" tab of a separate sheet, and picked automatically based on the
 selected asset's type.
 
 **This data goes stale as the registry sheet changes** — new water points,
-renamed villages, corrected wards. There's no live sync back to the sheet;
-re-export it and regenerate `lib/waterAssets.js` (a plain array of
-`[assetTag, assetType, ward, village, subVillage, location, lat, lon,
-volunteer, routeOrder]` tuples — see "Volunteer identification and routes"
-below for the last four) when it's meaningfully out of date. Two Kiru
-assets have no village/sub-village on file and use `""` — that's the
-sheet's data, not a bug here.
+renamed villages, corrected wards, ownership changes. There's no live sync
+back to the sheet; re-export it and regenerate `lib/waterAssets.js` (a
+plain array of `[assetTag, assetType, ward, village, subVillage, location,
+lat, lon, volunteer, routeOrder, isPublic]` tuples — see "Volunteer
+identification and routes" below for the volunteer/routeOrder pair) when
+it's meaningfully out of date. Two Kiru assets have no village/sub-village
+on file and use `""` — that's the sheet's data, not a bug here.
 
 The 81 individual checklist statements (in both the Water Point and Tanks
 and Intake sections) are kept verbatim from Nelson's checklist and are only
@@ -82,12 +93,13 @@ that asset. The assignment and order are **precomputed and baked into
 `lib/waterAssets.js`**, not calculated on the device, so every volunteer's
 phone shows the same plan:
 
-- Of the 1,693 Water Points, **1,121 (66%) have GPS coordinates** in the
-  sheet's "Coordinates in decimal" column; the other 572 (34%) don't —
-  mostly villages that just weren't GPS-tagged yet. Only the 1,121 go into
-  the routing math below; re-collecting GPS for the rest and regenerating
-  this file would bring them in too.
-- Those 1,121 were split into 6 **equal-sized** (~187 each), geographically
+- Of the **332 Public** Water Points (private ones are entirely out of
+  scope — see "Water Assets registry" above), **302 (91%) have GPS
+  coordinates** in the sheet's "Coordinates in decimal" column; the other
+  30 (9%) don't. Only the 302 go into the routing math below;
+  re-collecting GPS for the rest and regenerating this file would bring
+  them in too.
+- Those 302 were split into 6 **equal-sized** (~50 each), geographically
   compact groups via a recursive median-cut partition (repeatedly slice the
   point cloud in half along whichever axis — latitude or longitude —
   currently spans further), then each group assigned to one volunteer,
@@ -98,20 +110,21 @@ phone shows the same plan:
   walk starting from the westmost point — **straight-line distance**, since
   there's no detailed road network here to route against. The map draws
   that straight-line path; it is not turn-by-turn driving directions.
-- The 572 without coordinates are still assigned to a volunteer (by
+- The 30 without coordinates are still assigned to a volunteer (by
   majority vote of their own village's coordinate-bearing points, falling
   back to ward, then to the single largest group — only 2 assets, both in
   Kiru, hit that last fallback), but with no position to place them in the
   order, so the app lists them after the route, unordered, flagged "No GPS."
   This means volunteer workloads are **not perfectly even** once those are
-  included — whichever villages have poor GPS coverage weigh down whoever's
-  group they landed in.
+  included (ranging ~50–65 per volunteer as of this export) — whichever
+  villages have poor GPS coverage weigh down whoever's group they landed in.
 
-To regenerate this after the sheet changes (new points, or GPS added for
-the 572 gap above): re-export "Water Assets", re-run the same clustering
-script (recursive median-cut + nearest-neighbor, seeded from the "Coordinates
-in decimal" column) to rebuild `WATER_ASSET_ROWS` in `lib/waterAssets.js`
-with fresh `lat`/`lon`/`volunteer`/`routeOrder` values. There's no saved
+To regenerate this after the sheet changes (new points, GPS added for the
+30-point gap above, or ownership changes): re-export "Water Assets",
+re-run the same pipeline (Public-only filter → recursive median-cut →
+nearest-neighbor, seeded from the "Ownership" and "Coordinates in decimal"
+columns) to rebuild `WATER_ASSET_ROWS` in `lib/waterAssets.js` with fresh
+`lat`/`lon`/`volunteer`/`routeOrder`/`isPublic` values. There's no saved
 script committed here yet — it was run ad hoc; worth turning into a real
 `scripts/` file if this becomes a recurring task.
 
