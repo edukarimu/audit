@@ -184,6 +184,8 @@ h3{font-size:14px;line-height:1.3}
 .btn-primary:hover{filter:brightness(1.08)}
 .btn-ghost{background:var(--surface);border-color:var(--line-strong);color:var(--ink)}
 .btn-ghost:hover{background:var(--surface-2)}
+.btn-danger-outline{background:var(--surface);border-color:var(--issue);color:var(--issue)}
+.btn-danger-outline:hover{background:var(--issue-soft)}
 .btn-block{width:100%}
 .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 
